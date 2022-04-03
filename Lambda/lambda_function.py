@@ -1,4 +1,3 @@
-### Required Libraries ###
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 
@@ -25,6 +24,64 @@ def build_validation_result(is_valid, violated_slot, message_content):
         "violatedSlot": violated_slot,
         "message": {"contentType": "PlainText", "content": message_content},
     }
+
+def validate_age(age,intent_request):
+    # Validate the age to be between 0 and 65
+    if age is not None:
+        age = parse_int(age)
+        if age <= 0:
+            # error message for negative age
+            return build_validation_result(
+                False,
+                "age",
+                "The age should be a positive number."
+                "Please provide your correct age."
+            )
+        elif age >= 65:
+            # error message for age >= 65
+            return build_validation_result(
+                False,
+                "age",
+                "The age should be a less than 65 years."
+                "We can only help if you are below 65 years."
+            )
+    
+    # True results is returned if age is valid
+    return build_validation_result(True,None,None)
+
+
+def get_recommendation(riskLevel):
+    # Returns a Portfolio Recommendation
+    recommendation = ""
+    if riskLevel is not None:
+        if riskLevel.lower() == 'none':
+            recommendation = "100% bonds (AGG), 0% equities (SPY)"
+        elif riskLevel.lower() == 'low':
+            recommendation = "60% bonds (AGG), 40% equities (SPY)"
+        elif riskLevel.lower() == "medium":
+            recommendation = "40% bonds (AGG), 60% equities (SPY)"
+        elif riskLevel.lower() == 'high': 
+            recommendation = "20% bonds (AGG), 80% equities (SPY)"
+        else:
+            recommendation = "Please check your risk_level and start again"
+        return recommendation
+
+
+def validate_amount(investmentAmount,intent_request):
+    # Validate the age to be between 0 and 65
+    if investmentAmount is not None:
+        investmentAmount = parse_int(investmentAmount)
+        if investmentAmount < 5000:
+            # error message for lower investment threshold
+            return build_validation_result(
+                False,
+                "investmentAmount",
+                "The investment is below our threshold."
+                "Please invest at least $5,000."
+            )
+    
+    # True results is returned if investmentAmount is valid
+    return build_validation_result(True,None,None)
 
 
 ### Dialog Actions Helper Functions ###
@@ -120,11 +177,72 @@ def recommend_portfolio(intent_request):
 
     first_name = get_slots(intent_request)["firstName"]
     age = get_slots(intent_request)["age"]
+    # print("Before invest amount request",intent_request)
     investment_amount = get_slots(intent_request)["investmentAmount"]
     risk_level = get_slots(intent_request)["riskLevel"]
     source = intent_request["invocationSource"]
 
     # YOUR CODE GOES HERE!
+    
+    if source == "DialogCodeHook":
+        # This code performs basic validation on the supplied input slots
+
+        # Gets all the slots
+        slots = get_slots(intent_request)
+
+        # Validate user's input using validate_age function
+        validation_result = validate_age(age,intent_request)
+
+        if not validation_result["isValid"]:
+            slots[validation_result["violatedSlot"]] = None # Cleans the invalide slot
+
+            # Returns an elicitSlot dialog to request new data for the invalid slot
+            return elicit_slot(
+                intent_request["sessionAttributes"],
+                intent_request["currentIntent"]["name"],
+                slots,
+                validation_result["violatedSlot"],
+                validation_result["message"],
+            )
+
+        # Validate user's input using validate_amount function
+        validation_amount = validate_amount(investment_amount,intent_request)
+
+        if not validation_amount["isValid"]:
+            slots[validation_amount["violatedSlot"]] = None # Cleans the invalide slot
+
+            # Returns an elicitSlot dialog to request new data for the invalid slot
+            return elicit_slot(
+                intent_request["sessionAttributes"],
+                intent_request["currentIntent"]["name"],
+                slots,
+                validation_amount["violatedSlot"],
+                validation_amount["message"],
+            )
+        
+        # Fetch current session attributes
+        output_session_attributes = intent_request["sessionAttributes"]
+
+        # Once all slots are valid, a delegate dialog is returned to Lex to choose the next course of action.
+        return delegate(output_session_attributes, get_slots(intent_request))
+
+
+    # Return a message with conversion's result.
+    return close(
+        intent_request["sessionAttributes"],
+        "Fulfilled",
+        {
+            "contentType": "PlainText",
+            "content": """Thank you for your information;
+            We recommend you to do following.
+            {}
+            """.format(
+                get_recommendation(risk_level)
+            ),
+        },
+    )
+
+    
 
 
 ### Intents Dispatcher ###
